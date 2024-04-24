@@ -1,0 +1,330 @@
+%%cuda
+#include <stdio.h>
+
+const int DSIZE = 4096;
+const int block_size = 256;
+
+__global__ void vadd(const float *A, const float *B, float *C, int ds){
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < ds) {
+        C[idx] = A[idx] + B[idx];
+    }
+}
+
+int main(){
+    float *h_A, *h_B, *h_C, *d_A, *d_B, *d_C;
+
+    h_A = new float[DSIZE];
+    h_B = new float[DSIZE];
+    h_C = new float[DSIZE];
+
+    for (int i = 0; i < DSIZE; i++) {
+        h_A[i] = rand()/(float)RAND_MAX;
+        h_B[i] = rand()/(float)RAND_MAX;
+    }
+
+    cudaMalloc(&d_A, DSIZE*sizeof(float));
+    cudaMalloc(&d_B, DSIZE*sizeof(float));
+    cudaMalloc(&d_C, DSIZE*sizeof(float));
+
+    cudaMemcpy(d_A, h_A, DSIZE*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, DSIZE*sizeof(float), cudaMemcpyHostToDevice);
+
+    vadd<<<(DSIZE+block_size-1)/block_size, block_size>>>(d_A, d_B, d_C, DSIZE);
+
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_C, d_C, DSIZE*sizeof(float), cudaMemcpyDeviceToHost);
+
+    printf("A[0] = %f\n", h_A[0]);
+    printf("B[0] = %f\n", h_B[0]);
+    printf("C[0] = %f\n", h_C[0]);
+    for(int i = 0 ; i < 10 ; i++){
+        printf("%f " , h_C[i]);
+    }
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);w
+    return 0;
+}
+
+%%cuda
+#include<stdio.h>
+#include<cuda.h>
+
+__global__ void matadd(int *l,int *m, int *n)
+{
+    int x=blockIdx.x;
+    int y=blockIdx.y;
+    int id=gridDim.x * y +x;
+    n[id]=l[id]+m[id];
+}
+int main()
+{
+    int n = 2 , m = 3;
+    int a[n][m];
+    int b[n][m];
+    int c[n][m];
+    int *d,*e,*f;
+    int i,j;
+
+    for(i=0;i<n;i++)
+    {
+        for(j=0;j<m;j++)
+            {
+                a[i][j] = (rand())%11;
+            }
+    }
+    for(i=0;i<n;i++)
+    {
+        for(j=0;j<m;j++)
+            {
+                b[i][j] = (rand())%11;
+            }
+    }
+    cudaMalloc((void **)&d,n*m*sizeof(int));
+    cudaMalloc((void **)&e,n*m*sizeof(int));
+    cudaMalloc((void **)&f,n*m*sizeof(int));
+    cudaMemcpy(d,a,n*m*sizeof(int),cudaMemcpyHostToDevice);
+    cudaMemcpy(e,b,n*m*sizeof(int),cudaMemcpyHostToDevice);
+
+    dim3 grid(m,n);
+    /* Here we are defining two dimensional Grid(collection of blocks) structure. Syntax is dim3 grid(no. of columns,no. of rows) */
+
+    matadd<<<grid,1>>>(d,e,f);
+
+    cudaMemcpy(c,f,n*m*sizeof(int),cudaMemcpyDeviceToHost);
+    printf("Matrix A is :\n");
+    for(i=0;i<n;i++)
+    {
+        for(j=0;j<m;j++)
+        {
+              printf("%d\t",a[i][j]);
+        }
+        printf("\n");
+    }
+
+    printf("Matrix B is :\n");
+    for(i=0;i<n;i++)
+    {
+        for(j=0;j<m;j++)
+        {
+              printf("%d\t",b[i][j]);
+        }
+        printf("\n");
+    }
+    printf("\nSum of two matrices:\n ");
+    for(i=0;i<n;i++)
+    {
+        for(j=0;j<m;j++)
+        {
+              printf("%d\t",c[i][j]);
+        }
+        printf("\n");
+    }
+    cudaFree(d);
+    cudaFree(e);
+    cudaFree(f);
+    return 0;
+}
+
+
+%%cuda
+#include<stdio.h>
+#include<cuda.h>
+#define row1 2 /* Number of rows of first matrix */
+#define col1 3 /* Number of columns of first matrix */
+#define row2 3 /* Number of rows of second matrix */
+#define col2 2 /* Number of columns of second matrix */
+
+__global__ void matproductsharedmemory(int *l,int *m, int *n)
+{
+    int x=blockIdx.x;
+    int y=blockIdx.y;
+    __shared__ int p[col1];
+
+    int i;
+    int k=threadIdx.x;
+
+    n[col2*y+x]=0;
+
+   p[k]=l[col1*y+k]*m[col2*k+x];
+
+  __syncthreads();
+
+  for(i=0;i<col1;i++)
+  n[col2*y+x]=n[col2*y+x]+p[i];
+}
+
+int main()
+{
+    int a[row1][col1];
+    int b[row2][col2];
+    int c[row1][col2];
+    int *d,*e,*f;
+    int i,j;
+
+    
+    for(i=0;i<row1;i++)
+    {
+        for(j=0;j<col1;j++)
+            {
+                a[i][j] = rand()%11;
+            }
+    }
+    
+        for(i=0;i<row2;i++)
+        {
+            for(j=0;j<col2;j++)
+                {
+                    b[i][j] = rand()%11;
+                }
+        }
+
+   cudaMalloc((void **)&d,row1*col1*sizeof(int));
+    cudaMalloc((void **)&e,row2*col2*sizeof(int));
+    cudaMalloc((void **)&f,row1*col2*sizeof(int));
+
+ cudaMemcpy(d,a,row1*col1*sizeof(int),cudaMemcpyHostToDevice);
+ cudaMemcpy(e,b,row2*col2*sizeof(int),cudaMemcpyHostToDevice);
+
+dim3 grid(col2,row1);
+/* Here we are defining two dimensional Grid(collection of blocks) structure. Syntax is dim3 grid(no. of columns,no. of rows) */
+
+matproductsharedmemory<<<grid,col1>>>(d,e,f);
+
+ cudaMemcpy(c,f,row1*col2*sizeof(int),cudaMemcpyDeviceToHost);
+
+  printf("\n Enter elements of first matrix of size 2*3\n");
+    for(i=0;i<row1;i++)
+    {
+        for(j=0;j<col1;j++)
+        {
+              printf("%d\t",a[i][j]);
+        }
+        printf("\n");
+    }
+  
+    printf("\n Enter elements of second matrix of size 3*2\n");
+    for(i=0;i<row2;i++)
+    {
+        for(j=0;j<col2;j++)
+        {
+              printf("%d\t",b[i][j]);
+        }
+        printf("\n");
+    }
+
+ printf("\n Product of two matrices:\n ");
+    for(i=0;i<row1;i++)
+    {
+        for(j=0;j<col2;j++)
+        {
+              printf("%d\t",c[i][j]);
+        }
+        printf("\n");
+    }
+
+    cudaFree(d);
+    cudaFree(e);
+    cudaFree(f);
+
+    return 0;
+}
+
+
+%%cuda
+#include<stdio.h>
+#include<cuda.h>
+#define row1 2 /* Number of rows of first matrix */
+#define col1 3 /* Number of columns of first matrix */
+#define row2 3 /* Number of rows of second matrix */
+#define col2 2 /* Number of columns of second matrix */
+
+__global__ void matproduct(int *l,int *m, int *n)
+{
+    int x=blockIdx.x;
+    int y=blockIdx.y;
+    int k;
+  
+n[col2*y+x]=0;
+for(k=0;k<col1;k++)
+   {
+    n[col2*y+x]=n[col2*y+x]+l[col1*y+k]*m[col2*k+x];
+   }
+}
+
+int main()
+{
+    int a[row1][col1];
+    int b[row2][col2];
+    int c[row1][col2];
+    int *d,*e,*f;
+    int i,j;
+
+    for(i=0;i<row1;i++)
+    {
+        for(j=0;j<col1;j++)
+            {
+                a[i][j] = rand()%11;
+            }
+    } 
+        for(i=0;i<row2;i++)
+        {
+            for(j=0;j<col2;j++)
+                {
+                    b[i][j] = rand()%11;
+                }
+        }
+
+    cudaMalloc((void **)&d,row1*col1*sizeof(int));
+    cudaMalloc((void **)&e,row2*col2*sizeof(int));
+    cudaMalloc((void **)&f,row1*col2*sizeof(int));
+
+ cudaMemcpy(d,a,row1*col1*sizeof(int),cudaMemcpyHostToDevice);
+ cudaMemcpy(e,b,row2*col2*sizeof(int),cudaMemcpyHostToDevice);
+
+dim3 grid(col2,row1);
+/* Here we are defining two dimensional Grid(collection of blocks) structure. Syntax is dim3 grid(no. of columns,no. of rows) */
+
+    matproduct<<<grid,1>>>(d,e,f);
+
+ cudaMemcpy(c,f,row1*col2*sizeof(int),cudaMemcpyDeviceToHost);
+    
+    printf("\n Enter elements of first matrix of size 2*3\n");
+    for(i=0;i<row1;i++)
+    {
+        for(j=0;j<col1;j++)
+        {
+              printf("%d\t",a[i][j]);
+        }
+        printf("\n");
+    }
+  
+    printf("\n Enter elements of second matrix of size 3*2\n");
+    for(i=0;i<row2;i++)
+    {
+        for(j=0;j<col2;j++)
+        {
+              printf("%d\t",b[i][j]);
+        }
+        printf("\n");
+    }
+
+    printf("\nProduct of two matrices:\n ");
+    for(i=0;i<row1;i++)
+    {
+        for(j=0;j<col2;j++)
+        {
+              printf("%d\t",c[i][j]);
+        }
+        printf("\n");
+    }
+
+    cudaFree(d);
+    cudaFree(e);
+    cudaFree(f);
+
+    return 0;
+}
